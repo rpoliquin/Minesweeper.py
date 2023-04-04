@@ -1,0 +1,493 @@
+"""
+Ryan Poliquin
+2/10/2023
+my original code for the classic Game 'Minesweeper'
+used info from:
+https://www.thepythoncode.com/article/make-a-button-using-pygame-in-python
+https://www.pygame.org/docs/
+https://www.geeksforgeeks.org/how-to-create-buttons-in-a-game-using-pygame/
+https://www.geeksforgeeks.org/global-local-variables-python/
+https://www.youtube.com/watch?v=SZdQX4gbql0
+https://www.geeksforgeeks.org/python-count-occurrences-element-list/
+https://docs.python.org/3/library/csv.html
+https://realpython.com/python-csv/
+"""
+import random
+import numpy as np
+import pygame
+import time
+from collections import Counter
+WINDOW_WIDTH = 800
+WINDOW_HEIGHT = 875
+WHITE = (200, 200, 200)
+BLACK = (0, 0, 0)
+BLUE = (0, 0, 200)
+GREEN = (0, 150, 0)
+YELLOW = (200, 200, 0)
+RED = (200, 0, 0)
+DARK_RED = (125, 0, 0)
+PURPLE = (200, 0, 200)
+GREY = (128, 128, 128)
+ORANGE = (255, 128, 0)
+update = True
+setting = True
+running = False
+screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+grid_size = 0
+total_time = 0
+game_time = 0
+pressing = True
+remaining_mines = 0
+mine_pressed = False
+creating = True
+easy_button = None
+medium_button = None
+hard_button = None
+quit_button = None
+play_button = None
+pygame.init()
+font = pygame.font.SysFont('Corbel', 100)
+small_font = pygame.font.SysFont('Corbel', 30)
+medium_font = pygame.font.SysFont('Ariel', 50)
+xl_font = pygame.font.SysFont('Ariel', 150)
+text_1 = small_font.render('1', True, BLUE)
+text_2 = small_font.render('2', True, GREEN)
+text_3 = small_font.render('3', True, DARK_RED)
+text_4 = small_font.render('4', True, PURPLE)
+text_5 = small_font.render('5', True, ORANGE)
+text_m = small_font.render('M', True, RED)
+text_guess = small_font.render('!!!', True, RED)
+text_timer = medium_font.render('Time: ', True, WHITE)
+text_flag = medium_font.render('!!! ', True, RED)
+text_remaining = medium_font.render('Remaining: ', True, WHITE)
+text_loss = xl_font.render('You Lose! :(', True, RED)
+text_win = xl_font.render('You Win! :)', True, GREEN)
+objects = []
+game_mode = ''
+class Button:
+    def __init__(self, x, y, width, height, button_text='Button', on_click_function=None,
+                 text_color=WHITE, index=None, is_grid=False, text_size=font):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.on_click_function = on_click_function
+        self.already_pressed = False
+        self.text_color = text_color
+        self.is_grid = is_grid
+        self.fill_colors = {'normal': '#999999', 'hover': '#888888', 'pressed': '#ffffff',}
+        self.button_surface = pygame.Surface((self.width, self.height))
+        self.button_rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        self.text = button_text
+        self.button_text = text_size.render(self.text, True, text_color)
+        self.index = index
+        objects.append(self)
+    def setting_process(self):
+        mouse_pos = pygame.mouse.get_pos()
+        self.button_surface.fill(self.fill_colors['normal'])
+        if self.button_rect.collidepoint(mouse_pos):
+            self.button_surface.fill(self.fill_colors['hover'])
+            if pygame.mouse.get_pressed(num_buttons=3)[0]:
+                self.button_surface.fill(self.fill_colors['pressed'])
+                if not self.already_pressed:
+                    self.on_click_function()
+                    self.already_pressed = True
+            else:
+                self.already_pressed = False
+        self.button_surface.blit(self.button_text, [self.button_rect.width / 2 - self.button_text.get_rect().width / 2,
+                                                    self.button_rect.height / 2 -
+                                                    self.button_text.get_rect().height / 2])
+        screen.blit(self.button_surface, self.button_rect)
+    def grid_process(self):
+        global remaining_mines, pressing
+        mouse_pos = pygame.mouse.get_pos()
+        self.button_surface.fill(self.fill_colors['normal'])
+        if self.is_grid:
+            if self.already_pressed or Pressed_cells.base[self.index[0], self.index[1]] == 1:
+                self.button_surface.fill(self.fill_colors['pressed'])
+                self.already_pressed = True
+                if Pressed_cells.base[self.index[0], self.index[1]] == 2:
+                    if self.button_rect.collidepoint(mouse_pos):
+                        if pygame.mouse.get_pressed(num_buttons=3)[0]:
+                            self.button_surface.fill(
+                                self.fill_colors['normal'])
+                            Pressed_cells.base[self.index[0], self.index[1]] = 0
+                            self.already_pressed = False
+                            remaining_mines += 1
+            else:
+                if self.button_rect.collidepoint(mouse_pos):
+                    self.button_surface.fill(self.fill_colors['hover'])
+                    if pygame.mouse.get_pressed(num_buttons=3)[0] and pressing:
+                        self.button_surface.fill(self.fill_colors['pressed'])
+                        if not self.already_pressed:
+                            self.cell_press()
+                            self.already_pressed = True
+                            self.button_surface.fill(self.fill_colors['pressed'])
+                    elif pygame.mouse.get_pressed(num_buttons=3)[2] and pressing:
+                        Pressed_cells.base[self.index[0], self.index[1]] = 2
+                        self.button_surface.fill(self.fill_colors['pressed'])
+                        remaining_mines -= 1
+                        if not self.already_pressed:
+                            self.already_pressed = True
+                            self.button_surface.fill(self.fill_colors['pressed'])
+                    else:
+                        self.already_pressed = False
+        else:
+            if self.button_rect.collidepoint(mouse_pos):
+                self.button_surface.fill(self.fill_colors['hover'])
+                if pygame.mouse.get_pressed(num_buttons=3)[0]:
+                    self.button_surface.fill(self.fill_colors['pressed'])
+                    if not self.already_pressed:
+                        self.on_click_function()
+                        self.already_pressed = True
+                else:
+                    self.already_pressed = False
+        self.button_surface.blit(self.button_text, [self.button_rect.width / 2 - self.button_text.get_rect().width / 2,
+                                                    self.button_rect.height / 2 -
+                                                    self.button_text.get_rect().height / 2])
+        screen.blit(self.button_surface, self.button_rect)
+    def cell_press(self):
+        global mine_pressed, remaining_mines
+        Pressed_cells.base[self.index[0], self.index[1]] = 1
+        if Grid.base[self.index[0], self.index[1]] == 9:
+            time.sleep(0.25)
+            mine_pressed = True
+            remaining_mines = Grid.mines
+        if Grid.base[self.index[0], self.index[1]] == 0:
+            check_cells = [[self.index[0] - 1, self.index[1] - 1], [self.index[0] - 1, self.index[1]],
+                           [self.index[0] - 1, self.index[1] + 1], [self.index[0], self.index[1] - 1],
+                           [self.index[0], self.index[1] + 1], [self.index[0] + 1, self.index[1] - 1],
+                           [self.index[0] + 1, self.index[1]], [self.index[0] + 1, self.index[1] + 1]]
+            for cell in check_cells:
+                if Grid.size > cell[0] >= 0 and Grid.size > cell[1] >= 0:
+                    if Grid.base[cell[0], cell[1]] == 0:
+                        if [cell[0] - 1, cell[1] - 1] not in check_cells and cell[0] - 1 >= 0 and cell[1] - 1 >= 0:
+                            check_cells.append([cell[0] - 1, cell[1] - 1])
+                        if [cell[0] - 1, cell[1]] not in check_cells and cell[0] - 1 >= 0 and cell[1] >= 0:
+                            check_cells.append([cell[0] - 1, cell[1]])
+                        if [cell[0] - 1, cell[1] + 1] not in check_cells and cell[0] - 1 >= 0 and cell[1] + 1 >= 0:
+                            check_cells.append([cell[0] - 1, cell[1] + 1])
+                        if [cell[0], cell[1] - 1] not in check_cells and cell[0] >= 0 and cell[1] - 1 >= 0:
+                            check_cells.append([cell[0], cell[1] - 1])
+                        if [cell[0], cell[1] + 1] not in check_cells and cell[0] >= 0 and cell[1] + 1 >= 0:
+                            check_cells.append([cell[0], cell[1] + 1])
+                        if [cell[0] + 1, cell[1] - 1] not in check_cells and cell[0] + 1 >= 0 and cell[1] - 1 >= 0:
+                            check_cells.append([cell[0] + 1, cell[1] - 1])
+                        if [cell[0] + 1, cell[1]] not in check_cells and cell[0] + 1 >= 0 and cell[1] >= 0:
+                            check_cells.append([cell[0] + 1, cell[1]])
+                        if [cell[0] + 1, cell[1] + 1] not in check_cells and cell[0] + 1 >= 0 and cell[1] + 1 >= 0:
+                            check_cells.append([cell[0] + 1, cell[1] + 1])
+            for cell in check_cells:
+                if Grid.size > cell[0] >= 0 and Grid.size > cell[1] >= 0 and Pressed_cells.base[cell[0], cell[1]] == 2:
+                    remaining_mines += 1
+                if Grid.size > cell[0] >= 0 and Grid.size > cell[1] >= 0:
+                    Pressed_cells.base[cell[0], cell[1]] = 1
+class Map:
+    def __init__(self, mode):
+        self.mode = mode.upper()
+        if self.mode == 'EASY':
+            self.base = np.zeros([8, 8])
+            self.size = 8
+            self.mines = 8
+            self.cells = []
+            self.mines_list = []
+            for rows_1 in range(0, self.size):
+                for columns_1 in range(0, self.size):
+                    self.cells.append([rows_1, columns_1])
+        elif self.mode == 'MEDIUM':
+            self.base = np.zeros([16, 16])
+            self.size = 16
+            self.mines = 32
+            self.cells = []
+            self.mines_list = []
+            for rows_1 in range(0, self.size):
+                for columns_1 in range(0, self.size):
+                    self.cells.append([rows_1, columns_1])
+        elif self.mode == 'HARD':
+            self.base = np.zeros([25, 25])
+            self.size = 25
+            self.mines = 100
+            self.cells = []
+            self.mines_list = []
+            for rows_1 in range(0, self.size):
+                for columns_1 in range(0, self.size):
+                    self.cells.append([rows_1, columns_1])
+        else:
+            print('<ERROR: Incorrect Mode>')
+    def add_mines(self):
+        for mines in range(1, self.mines + 1):
+            index = random.choice(self.cells)
+            self.base[index[1], index[0]] = 9
+            self.cells.remove(index)
+            self.mines_list.append([index[1], index[0]])
+    def add_adjacent_numbers(self):
+        for mines in self.mines_list:
+            mines_row = mines[0]
+            mines_col = mines[1]
+            cell_1 = [mines_row - 1, mines_col - 1]
+            cell_2 = [mines_row - 1, mines_col]
+            cell_3 = [mines_row - 1, mines_col + 1]
+            cell_4 = [mines_row, mines_col - 1]
+            cell_5 = [mines_row, mines_col + 1]
+            cell_6 = [mines_row + 1, mines_col - 1]
+            cell_7 = [mines_row + 1, mines_col]
+            cell_8 = [mines_row + 1, mines_col + 1]
+            if (0 <= cell_1[0] < Grid.size) and (0 <= cell_1[1] < Grid.size) and self.base[cell_1[0], cell_1[1]] != 9:
+                self.base[cell_1[0], cell_1[1]] = self.base[cell_1[0], cell_1[1]] + 1
+            if (0 <= cell_2[0] < Grid.size) and (0 <= cell_2[1] < Grid.size) and self.base[cell_2[0], cell_2[1]] != 9:
+                self.base[cell_2[0], cell_2[1]] = self.base[cell_2[0], cell_2[1]] + 1
+            if (0 <= cell_3[0] < Grid.size) and (0 <= cell_3[1] < Grid.size) and self.base[cell_3[0], cell_3[1]] != 9:
+                self.base[cell_3[0], cell_3[1]] = self.base[cell_3[0], cell_3[1]] + 1
+            if (0 <= cell_4[0] < Grid.size) and (0 <= cell_4[1] < Grid.size) and self.base[cell_4[0], cell_4[1]] != 9:
+                self.base[cell_4[0], cell_4[1]] = self.base[cell_4[0], cell_4[1]] + 1
+            if (0 <= cell_5[0] < Grid.size) and (0 <= cell_5[1] < Grid.size) and self.base[cell_5[0], cell_5[1]] != 9:
+                self.base[cell_5[0], cell_5[1]] = self.base[cell_5[0], cell_5[1]] + 1
+            if (0 <= cell_6[0] < Grid.size) and (0 <= cell_6[1] < Grid.size) and self.base[cell_6[0], cell_1[1]] != 9:
+                self.base[cell_6[0], cell_6[1]] = self.base[cell_6[0], cell_6[1]] + 1
+            if (0 <= cell_7[0] < Grid.size) and (0 <= cell_7[1] < Grid.size) and self.base[cell_7[0], cell_7[1]] != 9:
+                self.base[cell_7[0], cell_7[1]] = self.base[cell_7[0], cell_7[1]] + 1
+            if (0 <= cell_8[0] < Grid.size) and (0 <= cell_8[1] < Grid.size) and self.base[cell_8[0], cell_8[1]] != 9:
+                self.base[cell_8[0], cell_8[1]] = self.base[cell_8[0], cell_8[1]] + 1
+def draw_grid(block_size):
+    for x in range(0, WINDOW_WIDTH, block_size):
+        for y in range(0, WINDOW_HEIGHT - 100, block_size):
+            rect = pygame.Rect(x, y, block_size, block_size)
+            pygame.draw.rect(screen, WHITE, rect, 1)
+def easy_button_press():
+    global game_mode, setting, update, running
+    game_mode = 'easy'
+    setting = False
+    running = True
+def medium_button_press():
+    global game_mode, setting, update, running
+    game_mode = 'medium'
+    setting = False
+    running = True
+def hard_button_press():
+    global game_mode, setting, update, running
+    game_mode = 'hard'
+    setting = False
+    running = True
+def quit_press():
+    global running
+    pygame.display.quit()
+    running = False
+    quit()
+def create_map():
+    global objects
+    objects = []
+    Grid.add_mines()
+    Grid.add_adjacent_numbers()
+    screen.fill(GREY)
+def create_buttons():
+    height_b = (WINDOW_HEIGHT - (WINDOW_HEIGHT - WINDOW_WIDTH)) / Grid.size
+    width_b = WINDOW_WIDTH / Grid.size
+    for rows in range(0, Grid.size):
+        for columns in range(0, Grid.size):
+            xi = 'b' + str(rows) + '_' + str(columns)
+            x_pos = columns * grid_size + 1
+            y_pos = rows * grid_size + 1
+            globals()['string%s' % xi] = Button(x_pos + 2, y_pos + 2, width_b - 2, height_b - 2, '',
+                                                on_click_function=None, index=[rows, columns], is_grid=True)
+def draw_lower_boxes():
+    rect = pygame.Rect(0, WINDOW_WIDTH, WINDOW_WIDTH / 2, (WINDOW_HEIGHT - WINDOW_WIDTH))
+    pygame.draw.rect(screen, WHITE, rect, 5)
+    rect2 = pygame.Rect(WINDOW_WIDTH / 2, WINDOW_WIDTH, WINDOW_WIDTH / 2, (WINDOW_HEIGHT - WINDOW_WIDTH))
+    pygame.draw.rect(screen, WHITE, rect2, 5)
+def play_press():
+    global update, setting, running, screen, Grid, Pressed_cells, grid_size, total_time, game_time, pressing,\
+        remaining_mines, mine_pressed, easy_button, medium_button, hard_button, quit_button, play_button,objects,\
+        game_mode
+    objects = []
+    game_mode = ''
+    update = True
+    setting = True
+    running = False
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    grid_size = 0
+    total_time = 0
+    game_time = 0
+    pressing = True
+    remaining_mines = 0
+    mine_pressed = False
+    easy_button = None
+    medium_button = None
+    hard_button = None
+    quit_button = None
+    play_button = None
+    time.sleep(0.25)
+    game_loop()
+def load_end_screen(status):
+    global creating, quit_button, play_button, pressing
+    if status == 'loss':
+        text = text_loss
+    else:
+        text = text_win
+    if creating:
+        quit_button = Button(400, WINDOW_WIDTH / 2, 300, 100, 'Quit', text_color=WHITE,
+                             on_click_function=quit_press, is_grid=False, text_size=medium_font)
+        play_button = Button(100, WINDOW_WIDTH / 2, 300, 100, 'Play Again?',
+                             on_click_function=play_press, is_grid=False, text_size=medium_font)
+        creating = False
+    pressing = False
+    coord = ((WINDOW_WIDTH / 2) - (text.get_rect().width / 2),(WINDOW_HEIGHT / 3) - (text.get_rect().height / 2))
+    screen.blit(text, coord)
+    mouse_pos = pygame.mouse.get_pos()
+    if quit_button.button_rect.collidepoint(mouse_pos):
+        quit_button.button_surface.fill(quit_button.fill_colors['hover'])
+        if pygame.mouse.get_pressed(num_buttons=3)[0]:
+            quit_button.button_surface.fill(quit_button.fill_colors['pressed'])
+    if play_button.button_rect.collidepoint(mouse_pos):
+        play_button.button_surface.fill(play_button.fill_colors['hover'])
+        if pygame.mouse.get_pressed(num_buttons=3)[0]:
+            play_button.button_surface.fill(play_button.fill_colors['pressed'])
+    quit_button.button_surface.blit(quit_button.button_text,
+                                    [quit_button.button_rect.width / 2 - quit_button.button_text.get_rect().width / 2,
+                                     quit_button.button_rect.height / 2 -
+                                     quit_button.button_text.get_rect().height / 2])
+    screen.blit(quit_button.button_surface, quit_button.button_rect)
+    play_button.button_surface.blit(play_button.button_text,
+                                    [play_button.button_rect.width / 2 - play_button.button_text.get_rect().width / 2,
+                                     play_button.button_rect.height / 2 -
+                                     play_button.button_text.get_rect().height / 2])
+    screen.blit(play_button.button_surface, play_button.button_rect)
+    play_rect = pygame.Rect(100, WINDOW_WIDTH / 2, 300, 100)
+    pygame.draw.rect(screen, WHITE, play_rect, 5)
+    quit_rect = pygame.Rect(400, WINDOW_WIDTH / 2, 300, 100)
+    pygame.draw.rect(screen, WHITE, quit_rect, 5)
+def generate_grid_text():
+    for rows in range(0, Grid.size):
+        for columns in range(0, Grid.size):
+            if Pressed_cells.base[rows, columns] == 1:
+                if Grid.base[rows, columns] == 1:
+                    coord = (
+                        (columns * grid_size) + (grid_size / 2) - (text_1.get_rect().width / 2),
+                        (rows * grid_size) +
+                        (grid_size / 2) - (text_1.get_rect().height / 2))
+                    screen.blit(text_1, coord)
+                if Grid.base[rows, columns] == 2:
+                    coord = (
+                        (columns * grid_size) + (grid_size / 2) - (text_2.get_rect().width / 2),
+                        (rows * grid_size) +
+                        (grid_size / 2) - (text_2.get_rect().height / 2))
+                    screen.blit(text_2, coord)
+                if Grid.base[rows, columns] == 3:
+                    coord = (
+                        (columns * grid_size) + (grid_size / 2) - (text_3.get_rect().width / 2),
+                        (rows * grid_size) +
+                        (grid_size / 2) - (text_3.get_rect().height / 2))
+                    screen.blit(text_3, coord)
+                if Grid.base[rows, columns] == 4:
+                    coord = (
+                        (columns * grid_size) + (grid_size / 2) - (text_4.get_rect().width / 2),
+                        (rows * grid_size) +
+                        (grid_size / 2) - (text_4.get_rect().height / 2))
+                    screen.blit(text_4, coord)
+                if Grid.base[rows, columns] == 5:
+                    coord = (
+                        (columns * grid_size) + (grid_size / 2) - (text_5.get_rect().width / 2),
+                        (rows * grid_size) +
+                        (grid_size / 2) - (text_5.get_rect().height / 2))
+                    screen.blit(text_5, coord)
+                if Grid.base[rows, columns] == 9:
+                    coord = (
+                        (columns * grid_size) + (grid_size / 2) - (text_m.get_rect().width / 2),
+                        (rows * grid_size) +
+                        (grid_size / 2) - (text_m.get_rect().height / 2))
+                    screen.blit(text_m, coord)
+            elif Pressed_cells.base[rows, columns] == 2:
+                coord = (
+                    (columns * grid_size) + (grid_size / 2) - (text_guess.get_rect().width / 2),
+                    (rows * grid_size) +
+                    (grid_size / 2) - (text_guess.get_rect().height / 2))
+                screen.blit(text_guess, coord)
+def game_loop():
+    global update, setting, running, screen, Grid, Pressed_cells, grid_size, total_time, game_time, pressing,\
+        remaining_mines, mine_pressed, easy_button, medium_button, hard_button, quit_button, play_button, small_font,\
+        creating
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    screen.fill(BLACK)
+    update = True
+    setting = True
+    running = False
+    easy_button = Button(10, 10, WINDOW_WIDTH - 20, (WINDOW_HEIGHT / 3) - 10, button_text='Easy',
+                         on_click_function=easy_button_press, text_color=GREEN)
+    medium_button = Button(10, WINDOW_HEIGHT / 3 + 10, WINDOW_WIDTH - 20, (WINDOW_HEIGHT / 3) - 10,
+                           button_text='Medium',
+                           on_click_function=medium_button_press, text_color=YELLOW)
+    hard_button = Button(10, 2 * WINDOW_HEIGHT / 3 + 10, WINDOW_WIDTH - 20, (WINDOW_HEIGHT / 3) - 20,
+                         button_text='Hard',
+                         on_click_function=hard_button_press, text_color=RED)
+    while setting:
+        for object_s in objects:
+            object_s.setting_process()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                setting = False
+                pygame.display.quit()
+                update = False
+                quit()
+        if update:
+            pygame.display.update()
+        if running:
+            pygame.display.quit()
+    Grid = Map(game_mode)
+    Pressed_cells = Map(game_mode)
+    grid_size = WINDOW_WIDTH // Grid.size
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    create_map()
+    create_buttons()
+    if game_mode == 'hard':
+        small_font = pygame.font.SysFont('Corbel', 25)
+    else:
+        small_font = pygame.font.SysFont('Corbel', 30)
+    clock = pygame.time.Clock()
+    game_time = 0
+    total_time = 0
+    mine_pressed = False
+    pressing = True
+    creating = True
+    remaining_mines = Grid.mines
+    mine_index = 0
+    next_mine = 1
+    while running:
+        time_passed = (clock.tick() / 1000)
+        total_time += time_passed
+        draw_grid(grid_size)
+        draw_lower_boxes()
+        if pressing:
+            game_time += time_passed
+        if mine_pressed and mine_index < Grid.mines:
+            current_mine = Grid.mines_list[int(mine_index // 1)]
+            Pressed_cells.base[current_mine[0], current_mine[1]] = 1
+            mine_index += .025
+            if (mine_index // 1) == next_mine:
+                remaining_mines -= 1
+            next_mine = (mine_index // 1) + 1
+        screen.blit(text_timer, (20, WINDOW_HEIGHT - 50))
+        text_time = medium_font.render(f'{game_time:.1f}', True, WHITE)
+        screen.blit(text_time, (WINDOW_WIDTH / 4, WINDOW_HEIGHT - 50))
+        text_remaining_mines = medium_font.render(f'{remaining_mines}', True, WHITE)
+        screen.blit(text_flag, (WINDOW_WIDTH / 1.85, WINDOW_HEIGHT - 50))
+        screen.blit(text_remaining, (WINDOW_WIDTH / 1.65, WINDOW_HEIGHT - 50))
+        screen.blit(text_remaining_mines, (WINDOW_WIDTH / 1.1, WINDOW_HEIGHT - 50))
+        for object_s in objects:
+            object_s.grid_process()
+        generate_grid_text()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+        if mine_pressed:
+            load_end_screen('loss')
+        pressed = 0
+        for row in range(Grid.size):
+            counter = Counter(Pressed_cells.base[row])
+            pressed += counter[1]
+        if pressed == (Grid.size ** 2) - Grid.mines:
+            load_end_screen('win')
+        pygame.display.update()
+        screen.fill(GREY)
+if __name__ == '__main__':
+    Grid = Map('Easy')
+    Pressed_cells = Map('Easy')
+    game_loop()
